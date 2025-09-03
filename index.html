@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Event Driven Programming Exam</title>
+<style>
+  :root{--bg:#0f172a;--card:#111827;--accent:#38bdf8;--muted:#94a3b8;--ok:#22c55e;--bad:#ef4444;}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,"Helvetica Neue",Arial,"Noto Sans";background:var(--bg);color:#e5e7eb}
+  header{padding:28px 16px;text-align:center;border-bottom:1px solid #1f2937;background:linear-gradient(180deg,rgba(56,189,248,.08),transparent)}
+  h1{margin:0 0 8px 0;font-size:clamp(22px,4vw,36px);letter-spacing:.2px}
+  p.sub{margin:0;color:var(--muted);font-size:clamp(14px,2.3vw,16px)}
+  main{max-width:900px;margin:24px auto;padding:16px}
+  .card{background:var(--card);border:1px solid #1f2937;border-radius:16px;padding:18px;margin:16px 0;box-shadow:0 10px 30px rgba(0,0,0,.25);text-align:center}
+  .question{font-size:18px;margin:6px 0 14px 0;line-height:1.4;text-align:left}
+  input.answer{width:100%;padding:10px;border-radius:8px;border:1px solid #243041;background:#0b1220;color:#e5e7eb}
+  button{background:var(--accent);border:none;color:#05232e;padding:10px 20px;border-radius:10px;font-weight:600;cursor:pointer;margin-top:10px}
+  #hud{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin:12px 0}
+  .pill{border:1px solid #1f2937;background:#0b1220;border-radius:999px;padding:6px 12px;font-size:13px;color:#cbd5e1}
+  #result{font-size:18px;margin-top:12px;text-align:center}
+  footer{color:var(--muted);text-align:center;padding:24px 12px}
+
+  /* --- Modal --- */
+  .modal-backdrop{
+    position:fixed; inset:0; background:rgba(0,0,0,.6);
+    display:none; align-items:center; justify-content:center; z-index:9999;
+  }
+  .modal{
+    width:min(520px,92vw); background:var(--card); border:1px solid #1f2937;
+    border-radius:16px; padding:20px; box-shadow:0 20px 60px rgba(0,0,0,.4); text-align:center;
+  }
+  .modal h3{margin:.25rem 0 .5rem 0; font-size:20px}
+  .modal p{margin:0 0 10px 0; color:#cbd5e1}
+  .modal .warn{color:var(--bad); font-weight:700; margin-bottom:8px}
+  .modal .actions{margin-top:12px; display:flex; gap:10px; justify-content:center; flex-wrap:wrap}
+  .btn{background:var(--accent); color:#05232e; border:none; border-radius:10px; padding:10px 16px; font-weight:700; cursor:pointer}
+  .btn.ghost{background:transparent; color:#cbd5e1; border:1px solid #334155}
+  .show{display:flex}
+</style>
+</head>
+<body>
+<header>
+  <h1>Identification Type – Answers should be the same format from the powerpoint!</h1>
+  <p class="sub">Inline Events • addEventListener • Callbacks • Promises • Async/Await • DOM & Timers • Fetch API</p>
+</header>
+
+<main>
+  <div id="hud">
+    <span class="pill" id="progress">Question 0/0</span>
+    <span class="pill" id="timer">Time: 10:00</span>
+  </div>
+  <div id="quiz"></div>
+  <div class="card">
+    <div class="question" id="result">Press START to begin the exam.</div>
+    <button id="startBtn">START EXAM</button>
+  </div>
+</main>
+
+<footer>Made for classroom use.</footer>
+
+
+<!-- Modal -->
+<div id="warningBackdrop" class="modal-backdrop" aria-modal="true" role="dialog">
+  <div class="modal" role="document">
+    <div class="warn">⚠ Warning</div>
+    <h3>Do not switch tabs or minimize the exam.</h3>
+    <p>This is your first warning. Continuing will restore fullscreen.</p>
+    <div class="actions">
+      <button id="continueBtn" class="btn">Continue Exam</button>
+      <button id="exitBtn" class="btn ghost">Exit Exam</button>
+    </div>
+  </div>
+</div>
+<!-- Confirmation Modal -->
+<div id="confirmBackdrop" class="modal-backdrop">
+  <div class="modal">
+    <h2>Confirm Answer</h2>
+    <p id="confirmText">Are you sure you want to submit this answer?</p>
+    <div class="modal-actions">
+      <button id="confirmYes">Yes</button>
+      <button id="confirmNo">No</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ------------------ Exam Guardrails ------------------ */
+// Block reload/inspect/common shortcuts
+document.addEventListener("keydown", function(e){
+  const k = e.key?.toLowerCase?.() || "";
+  // Reload
+  if (e.key==="F5" || (e.ctrlKey && k==="r")) { e.preventDefault(); }
+  // DevTools: F12 or Ctrl+Shift+I/J
+  if (e.key==="F12" || (e.ctrlKey && e.shiftKey && (k==="i"||k==="j"))) { e.preventDefault(); }
+  // View source Ctrl+U, copy/paste/cut/select-all/save
+  if (e.ctrlKey && ["c","v","x","a","s","u"].includes(k)) { e.preventDefault(); }
+});
+// Disable right click
+document.addEventListener("contextmenu", e=>e.preventDefault());
+
+/* ------------------ Fullscreen Helpers ------------------ */
+function requestFullscreen(){
+  const el = document.documentElement;
+  if (el.requestFullscreen) return el.requestFullscreen();
+  if (el.mozRequestFullScreen) return el.mozRequestFullScreen();
+  if (el.webkitRequestFullscreen) return el.webkitRequestFullscreen();
+  if (el.msRequestFullscreen) return el.msRequestFullscreen();
+}
+
+function inFullscreen(){
+  return !!(document.fullscreenElement || document.webkitFullscreenElement ||
+            document.mozFullScreenElement || document.msFullscreenElement);
+}
+
+/* ------------------ Modified renderQuestion ------------------ */
+function renderQuestion(index){
+  quizDiv.innerHTML="";
+  const q = questions[index];
+  progressEl.textContent=`Question ${index+1}/${questions.length}`;
+
+  const card=document.createElement("div");
+  card.className="card";
+  card.innerHTML=`
+    <div class="question">${q.question}</div>
+    <input type="text" class="answer" id="ansInput" autocomplete="off" autofocus>
+    <button id="submitBtn">Submit</button>
+  `;
+  quizDiv.appendChild(card);
+
+  const processAnswer = () => {
+    const ans = document.getElementById("ansInput").value.trim();
+    userAnswers[index] = ans || "-";
+    if(ans.toLowerCase() === q.answer.toLowerCase()) score++;
+    current++;
+    if(current < questions.length){
+      renderQuestion(current);
+    } else {
+      finishExam();
+    }
+  };
+
+  const submit = () => {
+    const ans = document.getElementById("ansInput").value.trim() || "-";
+    showConfirmModal(ans, processAnswer);
+  };
+
+  document.getElementById("submitBtn").addEventListener("click", submit);
+  document.getElementById("ansInput").addEventListener("keydown", e=>{
+    if (e.key === "Enter") {
+      e.preventDefault();
+      if (confirmOpen) return;   // ignore Enter if confirm is open
+      submit();
+    }
+  });
+
+}
+
+
+function showConfirmModal(answer, onConfirm) {
+  confirmText.textContent = `Are you sure you want to submit "${answer}" as your final answer?`;
+  const backdrop = document.getElementById("confirmBackdrop");
+  backdrop.classList.add("show");
+  confirmOpen = true;
+
+  const yesBtn = document.getElementById("confirmYes");
+  const noBtn = document.getElementById("confirmNo");
+
+  // move focus into the modal so Enter targets it
+  setTimeout(() => yesBtn.focus(), 0);
+
+  const cleanup = () => {
+    document.removeEventListener("keydown", handleKeys, true);
+    confirmOpen = false;
+  };
+
+  const handleYes = () => {
+    backdrop.classList.remove("show");
+    cleanup();
+    if (typeof onConfirm === "function") onConfirm();
+  };
+
+  const handleNo = () => {
+    backdrop.classList.remove("show");
+    cleanup();
+  };
+
+  // capture phase = true so the background input doesn’t see Enter/Escape
+  const handleKeys = (e) => {
+    if (e.key === "Enter") { e.preventDefault(); handleYes(); }
+    if (e.key === "Escape") { e.preventDefault(); handleNo(); }
+  };
+  document.addEventListener("keydown", handleKeys, true);
+
+  yesBtn.onclick = handleYes;
+  noBtn.onclick = handleNo;
+}
+
+
+
+
+
+
+  
+/* ------------------ Modal ------------------ */
+const backdrop = document.getElementById("warningBackdrop");
+
+function showWarningModal(){
+  backdrop.classList.add("show");
+
+  // Auto resume in 8s
+  let countdown = 8;
+  const modalText = backdrop.querySelector("p");
+  modalText.textContent = `This is your first warning. Resuming exam in ${countdown}s...`;
+
+  const interval = setInterval(async ()=>{
+    countdown--;
+    modalText.textContent = `This is your first warning. Resuming exam in ${countdown}s...`;
+    if(countdown <= 0){
+      clearInterval(interval);
+      backdrop.classList.remove("show");
+      try { await requestFullscreen(); } catch(e){}
+      setTimeout(()=>{ violationLock = false; },150);
+    }
+  },1000);
+}
+
+function hideWarningModal(){
+  backdrop.classList.remove("show");
+}
+
+/* ------------------ Exam State ------------------ */
+let questions = [];
+let userAnswers = [];
+let score = 0;
+let current = 0;
+let timer;
+let remaining = 10*60;
+
+let tabWarnings = 0;
+let isExamActive = false;
+let violationLock = false; // prevents duplicate triggers while modal open
+let confirmOpen = false;
+
+const quizDiv = document.getElementById("quiz");
+const progressEl = document.getElementById("progress");
+const timerEl = document.getElementById("timer");
+const resultEl = document.getElementById("result");
+const startBtn = document.getElementById("startBtn");
+
+function formatTime(s){
+  const m = Math.floor(s/60).toString().padStart(2,"0");
+  const sec = (s%60).toString().padStart(2,"0");
+  return m+":"+sec;
+}
+
+function startTimer(){
+  clearInterval(timer);
+  timer = setInterval(()=>{
+    remaining--;
+    timerEl.textContent = "Time: " + formatTime(remaining);
+    if(remaining<=0){
+      clearInterval(timer);
+      finishExam();
+    }
+  },1000);
+}
+
+function shuffleArray(arr){
+  for(let i=arr.length-1;i>0;i--){
+    const j = Math.floor(Math.random()*(i+1));
+    [arr[i],arr[j]]=[arr[j],arr[i]];
+  }
+  return arr;
+}
+
+
+
+function finishExam(){
+  clearInterval(timer);
+  isExamActive = false;
+  quizDiv.innerHTML="";
+  progressEl.textContent="Exam Completed";
+  resultEl.textContent="Exam Finished"; // <-- fix
+
+  const html=`<h2>Exam Results</h2>
+            <h3 style="color:var(--accent)">Final Score: ${score}/${questions.length}</h3>
+            <div id="countdownBox" style="margin-top:12px;font-size:16px;color:var(--muted)">
+              After 60 seconds, you can re-attempt the test. 
+              But your next score will be averaged with this attempt. <br>
+
+              ( 1st Attempt + 2nd Attempt ) / 2 = Your Score
+            </div>`;
+  quizDiv.innerHTML = html;
+
+  let countdown = 60;
+  const cdEl = document.getElementById("countdownBox");
+  const interval = setInterval(()=>{
+    countdown--;
+    cdEl.textContent = `After ${countdown}s, you can re-attempt the test. 
+                        The new score will be averaged with this attempt. <br>
+                        ( 1st Attempt + 2nd Attempt ) / 2 = Your Score `;
+    if(countdown<=0){
+      clearInterval(interval);
+      resetExam();
+    }
+  },1000);
+}
+
+function resetExam(){
+  quizDiv.innerHTML="";
+  resultEl.textContent="Press START to begin the exam.";
+  startBtn.style.display="inline-block";
+  progressEl.textContent="Question 0/0";
+  timerEl.textContent="Time: 10:00";
+  score=0; current=0; userAnswers=[]; remaining=10*60;
+  tabWarnings=0; violationLock=false;
+  document.body.style.background = "var(--bg)";
+}
+
+/* ------------------ Violation Handling ------------------ */
+function handleViolation(){
+  if(!isExamActive || violationLock) return;
+  violationLock = true;
+
+  tabWarnings++;
+
+  if(tabWarnings === 1){
+    // First offense: show modal + auto resume after 8s
+    showWarningModal();
+    let autoResume = 8;
+    const cd = document.getElementById("modalCountdown");
+    const iv = setInterval(()=>{
+      autoResume--;
+      cd.textContent = `Resuming in ${autoResume}s...`;
+      if(autoResume<=0){
+        clearInterval(iv);
+        hideWarningModal();
+        requestFullscreen().catch(()=>{});
+        setTimeout(()=>{ violationLock = false; },150);
+      }
+    },1000);
+  } else {
+    // Second offense: end exam
+    document.body.style.background = "red";
+    hideWarningModal();
+    finishExam();
+    violationLock = false;
+  }
+}
+
+// Visibility change (tab switch / minimize)
+document.addEventListener("visibilitychange", () => {
+  if(document.hidden){ handleViolation(); }
+});
+
+// Exit fullscreen = violation
+document.addEventListener("fullscreenchange", () => {
+  if(isExamActive && !inFullscreen()){
+    handleViolation();
+  }
+});
+document.addEventListener("webkitfullscreenchange", () => {
+  if(isExamActive && !inFullscreen()){
+    handleViolation();
+  }
+});
+document.addEventListener("msfullscreenchange", () => {
+  if(isExamActive && !inFullscreen()){
+    handleViolation();
+  }
+});
+
+/* Modal buttons */
+continueBtn.addEventListener("click", async ()=>{
+  hideWarningModal();
+  try { await requestFullscreen(); } catch(e){}
+  setTimeout(()=>{ violationLock = false; },150);
+});
+exitBtn.addEventListener("click", ()=>{
+  hideWarningModal();
+  finishExam();
+  violationLock = false;
+});
+
+/* ------------------ Start Exam ------------------ */
+startBtn.addEventListener("click", async ()=>{
+  try { await requestFullscreen(); } catch(e){}
+  startBtn.style.display="none";
+  resultEl.textContent="Exam in progress...";
+  isExamActive = true;
+
+  fetch("exam-data.json")
+    .then(res=>res.json())
+    .then(data=>{
+      questions = shuffleArray(data.questions);
+      current=0; score=0; userAnswers=[];
+      startTimer();
+      renderQuestion(0);
+    })
+    .catch(err=>{
+      console.error(err);
+      resultEl.textContent="Failed to load exam data.";
+      isExamActive = false;
+    });
+});
+</script>
+
+</body>
+</html>
+
+
+
+
+
+
+
+
+
